@@ -1,72 +1,60 @@
 import streamlit as st
 import requests
-import json
 import os
 
-st.set_page_config(page_title="TradingView Telegram Dashboard", page_icon="📈", layout="centered")
+st.set_page_config(page_title="Top 10 Nifty Screener to Telegram", page_icon="📈", layout="centered")
 
-st.title("📈 TradingView Telegram Alert Dashboard")
-st.markdown("Manage your Telegram bot integration and monitor incoming screener alerts.")
+st.title("📈 Top 10 Nifty Stocks Broadcaster")
+st.markdown("Paste your TradingView screener rows below to instantly format and broadcast the **Top 10** to Telegram.")
 
-# Sidebar Configuration
-st.sidebar.header("Telegram Settings")
+# Sidebar Settings for Telegram Credentials
+st.sidebar.header("Telegram Config")
 bot_token = st.sidebar.text_input("Bot Token", type="password", value=os.getenv("TELEGRAM_BOT_TOKEN", ""))
 chat_id = st.sidebar.text_input("Chat ID", value=os.getenv("TELEGRAM_CHAT_ID", ""))
 
 def send_telegram(message):
     if not bot_token or not chat_id:
-        return {"ok": False, "description": "Bot Token or Chat ID is missing."}
+        return {"ok": False, "description": "Missing Bot Token or Chat ID."}
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
     response = requests.post(url, json=payload)
     return response.json()
 
-# Tabs for Organization
-tab1, tab2, tab3 = st.tabs(["🚀 Test Alert", "📋 Webhook Logs", "⚙️ Deployment Guide"])
+# Pre-populated with the top rows from your Nifty screener image
+default_data = """MANOGRAPH | Manograph India Limited | 18.09 INR | +20.28%
+ALKALI | Alkali Metals Ltd. | 87.66 INR | +19.98%
+ANYA | Anya Polytech & Fertilizers | 17.85 INR | +19.00%
+KLL | Kaushalya Logistics Ltd. | 32.40 INR | +17.82%
+TIMEX | Timex Group India Limited | 714.20 INR | +16.50%
+SHIVAMAUTO | Shivam Autotech Limited | 19.42 INR | +16.29%
+HATHWAYB | Hathway Bhawani Cable... | 12.00 INR | +15.94%
+SAMBHV | Sambhv Steel Tubes Limited | 147.57 INR | +14.32%
+AVALON | Avalon Technologies Limited | 2,537.7 INR | +13.48%
+TCMLMTD | TCM Limited | 57.00 INR | +11.76%"""
 
-with tab1:
-    st.subheader("Send a Test Notification")
-    test_msg = st.text_area(
-        "Message Body (HTML supported)", 
-        "🚨 <b>NIFTY Screener Test</b>\n\n📈 <b>Stock:</b> RELIANCE\n💵 <b>Price:</b> ₹2,950.00\n📊 <b>Volume:</b> 1.5M"
-    )
-    if st.button("Send Test Message to Telegram"):
-        with st.spinner("Sending..."):
-            result = send_telegram(test_msg)
-            if result.get("ok"):
-                st.success("Message sent successfully to Telegram!")
-            else:
-                st.error(f"Failed to send: {result.get('description', 'Unknown error')}")
+raw_input_data = st.text_area("Paste Screener Rows Here", value=default_data, height=220)
 
-with tab2:
-    st.subheader("Recent Webhook Logs")
-    log_file = "webhook_logs.json"
-    
-    if os.path.exists(log_file):
-        try:
-            with open(log_file, "r") as f:
-                logs = json.load(f)
-            if logs:
-                for log in reversed(logs[-10:]):  # Show last 10 entries
-                    st.json(log)
-            else:
-                st.info("No webhook alerts recorded yet.")
-        except Exception as e:
-            st.error(f"Error reading log file: {e}")
+if st.button("🚀 Send Top 10 to Telegram"):
+    if not raw_input_data.strip():
+        st.warning("Please provide stock data.")
     else:
-        st.info("Log file not found yet. Webhooks will appear here once received.")
-        if st.button("Generate Sample Log"):
-            sample_logs = [{"ticker": "TCS", "close": "4120.50", "volume": "850K", "time": "2026-06-06"}]
-            with open(log_file, "w") as f:
-                json.dump(sample_logs, f)
-            st.rerun()
-
-with tab3:
-    st.subheader("Architecture Note")
-    st.markdown("""
-    Streamlit runs interactive UI apps and cannot natively accept raw HTTP POST webhooks directly without a backing endpoint. 
-    
-    **Recommended Setup:**
-    1. Deploy a lightweight receiver (like Flask/FastAPI) to handle incoming TradingView webhooks and save them to `webhook_logs.json`.
-    2. Deploy this Streamlit app on **Streamlit Community Cloud** pointing to the same log storage or database to view your live feed and test your bot configuration on the go.
-    """)
+        # Split lines and ensure we slice strictly the top 10
+        lines = [line.strip() for line in raw_input_data.strip().split("\n") if line.strip()]
+        top_10 = lines[:10]
+        
+        # Format lines with ranking numbers (1 to 10)
+        formatted_lines = []
+        for idx, line in enumerate(top_10, 1):
+            formatted_lines.append(f"<b>{idx}.</b> <code>{line}</code>")
+        
+        message = (
+            "🚨 <b>Top 10 Nifty 500 Screener Picks</b>\n\n" +
+            "\n".join(formatted_lines)
+        )
+        
+        with st.spinner("Broadcasting to Telegram..."):
+            res = send_telegram(message)
+            if res.get("ok"):
+                st.success("Top 10 successfully sent to Telegram!")
+            else:
+                st.error(f"Error: {res.get('description')}")
