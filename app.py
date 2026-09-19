@@ -1,49 +1,72 @@
-import os
+import streamlit as st
 import requests
-from flask import Flask, request, jsonify
+import json
+import os
 
-app = Flask(__name__)
+st.set_page_config(page_title="TradingView Telegram Dashboard", page_icon="📈", layout="centered")
 
-# Credentials (Set these as environment variables on your server)
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "YOUR_TELEGRAM_CHAT_ID")
+st.title("📈 TradingView Telegram Alert Dashboard")
+st.markdown("Manage your Telegram bot integration and monitor incoming screener alerts.")
 
-def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML"
-    }
+# Sidebar Configuration
+st.sidebar.header("Telegram Settings")
+bot_token = st.sidebar.text_input("Bot Token", type="password", value=os.getenv("TELEGRAM_BOT_TOKEN", ""))
+chat_id = st.sidebar.text_input("Chat ID", value=os.getenv("TELEGRAM_CHAT_ID", ""))
+
+def send_telegram(message):
+    if not bot_token or not chat_id:
+        return {"ok": False, "description": "Bot Token or Chat ID is missing."}
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
     response = requests.post(url, json=payload)
     return response.json()
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    data = request.get_json(silent=True)
-    
-    if not data:
-        return jsonify({"status": "error", "message": "Invalid JSON"}), 400
-    
-    # Extract details from TradingView alert payload
-    ticker = data.get("ticker", "N/A")
-    close_price = data.get("close", "N/A")
-    volume = data.get("volume", "N/A")
-    time_stamp = data.get("time", "N/A")
-    condition = data.get("condition", "Screener Match")
+# Tabs for Organization
+tab1, tab2, tab3 = st.tabs(["🚀 Test Alert", "📋 Webhook Logs", "⚙️ Deployment Guide"])
 
-    # Format Telegram message
-    message = (
-        f"🚨 <b>NIFTY Screener Alert</b>\n\n"
-        f"📈 <b>Stock:</b> {ticker}\n"
-        f"💵 <b>Price:</b> ₹{close_price}\n"
-        f"📊 <b>Volume:</b> {volume}\n"
-        f"🔍 <b>Condition:</b> {condition}\n"
-        f"⏰ <b>Time:</b> {time_stamp}"
+with tab1:
+    st.subheader("Send a Test Notification")
+    test_msg = st.text_area(
+        "Message Body (HTML supported)", 
+        "🚨 <b>NIFTY Screener Test</b>\n\n📈 <b>Stock:</b> RELIANCE\n💵 <b>Price:</b> ₹2,950.00\n📊 <b>Volume:</b> 1.5M"
     )
+    if st.button("Send Test Message to Telegram"):
+        with st.spinner("Sending..."):
+            result = send_telegram(test_msg)
+            if result.get("ok"):
+                st.success("Message sent successfully to Telegram!")
+            else:
+                st.error(f"Failed to send: {result.get('description', 'Unknown error')}")
 
-    send_telegram_message(message)
-    return jsonify({"status": "success"}), 200
+with tab2:
+    st.subheader("Recent Webhook Logs")
+    log_file = "webhook_logs.json"
+    
+    if os.path.exists(log_file):
+        try:
+            with open(log_file, "r") as f:
+                logs = json.load(f)
+            if logs:
+                for log in reversed(logs[-10:]):  # Show last 10 entries
+                    st.json(log)
+            else:
+                st.info("No webhook alerts recorded yet.")
+        except Exception as e:
+            st.error(f"Error reading log file: {e}")
+    else:
+        st.info("Log file not found yet. Webhooks will appear here once received.")
+        if st.button("Generate Sample Log"):
+            sample_logs = [{"ticker": "TCS", "close": "4120.50", "volume": "850K", "time": "2026-06-06"}]
+            with open(log_file, "w") as f:
+                json.dump(sample_logs, f)
+            st.rerun()
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+with tab3:
+    st.subheader("Architecture Note")
+    st.markdown("""
+    Streamlit runs interactive UI apps and cannot natively accept raw HTTP POST webhooks directly without a backing endpoint. 
+    
+    **Recommended Setup:**
+    1. Deploy a lightweight receiver (like Flask/FastAPI) to handle incoming TradingView webhooks and save them to `webhook_logs.json`.
+    2. Deploy this Streamlit app on **Streamlit Community Cloud** pointing to the same log storage or database to view your live feed and test your bot configuration on the go.
+    """)
